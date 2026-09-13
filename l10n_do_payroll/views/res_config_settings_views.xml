@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="res_config_settings_view_form_inherit" model="ir.ui.view">
+        <field name="name">res_config.settings.view.form.inherit</field>
+        <field name="model">res.config.settings</field>
+        <field name="priority" eval="45"/>
+        <field name="inherit_id" ref="hr_payroll.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <div class="app_settings_block">
+                    <h2>Nómina DO</h2>
+                    <div class="o_setting_box">
+                        <div class="o_setting_left_pane">
+                            <field name="min_salary"/>
+                        </div>
+                        <div class="o_setting_right_pane">
+                            <label for="min_salary" class="o_form_label"/>
+                            <p class="text-muted">Salario mínimo aprobado en el país</p>
+                        </div>
+                    </div>
+                </div>
+            </xpath>
+        </field>
+    </record>
+</odoo>

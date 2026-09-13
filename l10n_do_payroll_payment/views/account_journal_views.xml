@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_account_journal_form_payroll_txt" model="ir.ui.view">
+        <field name="name">account.journal.form.payroll.txt</field>
+        <field name="model">account.journal</field>
+        <field name="inherit_id" ref="account.view_account_journal_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Nomina TXT" name="payroll_txt" invisible="type != 'bank'">
+                    <group>
+                        <group string="Cuenta origen de nomina">
+                            <field name="bank_account_id" readonly="1"/>
+                            <field name="payroll_bank_type"/>
+                            <field name="payroll_email"/>
+                            <field name="payroll_company_bank_code" placeholder="00001"/>
+                        </group>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

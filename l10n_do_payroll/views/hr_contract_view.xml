@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Inherit Employee Form to add payroll-related custom fields -->
+    <record id="l10n_do_hr_employee_form_inherited" model="ir.ui.view">
+        <field name="name">l10n.do.hr.employee.form.inherited</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_form"/>
+        <field name="arch" type="xml">
+
+            <!-- Agregar deducciones vinculadas a la estructura de pago -->
+            <xpath expr="//page[@name='payroll_information']//field[@name='structure_type_id']" position="after">
+                <field name="deduction_plan" invisible="1"/>
+                <field name="deduction_quarter" invisible="deduction_plan == False" required="deduction_plan == True"/>
+            </xpath>
+
+            <!-- Insertar montos y porcentajes adicionales dentro del grupo de contrato para mantener el layout -->
+            <xpath expr="//page[@name='payroll_information']//group[@name='contract']" position="after">
+                <group name="local_payroll_fields" string="Campos adicionales de nómina">
+                    <field name="wage_extra_hour"/>
+                    <field name="wage_holidays_hour"/>
+                    <field name="fixed_loan"/>
+                    <field name="amount_saved"/>
+                    <field name="comission_rate"/>
+                </group>
+            </xpath>
+
+            <!-- Grupos de seguridad social y seguro complementario dentro de Payroll -->
+            <xpath expr="//page[@name='payroll_information']//group[@name='contract']" position="after">
+                <group string="Seguridad social">
+                    <field name="codependants" required="1"/>
+                </group>
+                <group string="Seguro complementario">
+                    <field name="assurance_amount"/>
+                </group>
+            </xpath>
+
+        </field>
+    </record>
+</odoo>

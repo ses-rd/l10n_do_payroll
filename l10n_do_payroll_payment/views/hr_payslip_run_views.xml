@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="hr_payslip_run_view_kanban_payroll_payment" model="ir.ui.view">
+        <field name="name">hr.payslip.run.kanban.payroll.payment</field>
+        <field name="model">hr.payslip.run</field>
+        <field name="inherit_id" ref="hr_payroll.hr_payslip_run_view_kanban"/>
+        <field name="arch" type="xml">
+            <xpath expr="//kanban/field[@name='payment_report_filename']" position="after">
+                <field name="payroll_batch_payment_id"/>
+                <field name="payroll_batch_payment_state"/>
+            </xpath>
+            <xpath expr="//t[@t-name='menu']" position="inside">
+                <button name="action_register_payroll_payment" type="object" class="btn btn-secondary" string="Registrar pagos"/>
+                <button name="action_open_payroll_batch_payment" type="object" class="btn btn-secondary" string="Ver lote de pagos"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="hr_payslip_run_form_payroll_payment" model="ir.ui.view">
+        <field name="name">hr.payslip.run.form.payroll.payment</field>
+        <field name="model">hr.payslip.run</field>
+        <field name="inherit_id" ref="hr_payroll.hr_payslip_run_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <header>
+                    <button name="action_register_payroll_payment" type="object" string="Registrar pagos"/>
+                    <button name="action_open_payroll_batch_payment" type="object" string="Ver lote de pagos"/>
+                </header>
+            </xpath>
+            <xpath expr="//form/group" position="inside">
+                <field name="payroll_batch_payment_id" readonly="1"/>
+                <field name="payroll_batch_payment_state" readonly="1" invisible="not payroll_batch_payment_id"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_hr_payslip_tree_payroll_payment" model="ir.ui.view">
+        <field name="name">hr.payslip.tree.payroll.payment</field>
+        <field name="model">hr.payslip</field>
+        <field name="inherit_id" ref="hr_payroll.view_hr_payslip_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//list/header/button[@name='action_payslip_paid']" position="after">
+                <button string="Registrar pagos" name="action_register_payroll_payment_from_list" type="object" class="oe_highlight"/>
+                <button string="Ver lote de pagos" name="action_open_payroll_batch_payment_from_list" type="object"/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

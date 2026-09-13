@@ -1,0 +1,1867 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+        <!-- Categoría neutral para mostrar desembolsos sin afectar NET -->
+        <record id="l10n_do_payroll.category_loan_disbursement" model="hr.salary.rule.category">
+            <field name="name">Desembolsos</field>
+            <field name="code">DESEM</field>
+        </record>
+        <!--    Reglas salariales comunes para cualquier actor economico.-->
+        <record id="hr_payroll_rules_salario_minimo" model="hr.salary.rule">
+            <field name="category_id" ref="hr_payroll.BASIC"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="name">Salario Mínimo</field>
+            <field name="code">SALARIO_MINIMO</field>
+            <field name="sequence">3</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+try:
+    result = payslip.env['ir.config_parameter'].sudo().get_param('l10n_do_payroll.default_min_salary')
+except:
+    result = 0
+            </field>
+<!--            <field name="appears_on_payslip" eval="False"/>-->
+        </record>
+
+<!--  Estructura de empleados fijos  -->
+        <record id="l10n_do_payroll_hr_rule_basic" model="hr.salary.rule">
+            <field name="name">Salario básico</field>
+            <field name="sequence" eval="1"/>
+            <field name="code">BASIC</field>
+            <field name="category_id" ref="hr_payroll.BASIC"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+v_wage = (payslip.version_id and payslip.version_id.wage) or (payslip.employee_id.version_id and payslip.employee_id.version_id.wage) or 0.0
+weekly_mode = payslip.employee_id.deduction_calc_mode == 'period' and payslip.employee_id.deduction_calc_period == 'weekly'
+period_wage = payslip._get_l10n_do_period_wage()
+manual_ratio = payslip._l10n_do_get_manual_worked_day_ratio()
+overlap_days = 0.0
+if not payslip.pay_vacation and payslip.employee_id and payslip.date_from and payslip.date_to:
+    overlap_days = payslip._get_vacation_days_overlap()
+
+if payslip.pay_vacation:
+    result = 0.0
+elif overlap_days:
+    if weekly_mode:
+        period_days = 23.83 / 4.0
+    elif payslip._get_l10n_do_effective_schedule_pay() == 'bi-weekly':
+        period_days = 23.83 / 2.0
+    else:
+        period_days = 23.83
+    worked_days = period_days - overlap_days
+    if worked_days &lt; 0.0:
+        worked_days = 0.0
+    result = (v_wage / 23.83) * worked_days
+elif weekly_mode:
+    result = period_wage * manual_ratio
+elif payslip._get_l10n_do_effective_schedule_pay() == 'bi-weekly':
+    result = period_wage * manual_ratio
+else:
+    result = v_wage * manual_ratio
+
+            </field>
+        </record>
+
+        <record id="l10n_do_payroll_hr_rule_taxable" model="hr.salary.rule">
+            <field name="name">Salario Bruto - Salario Cotizable TSS/INFOTEP</field>
+            <field name="sequence" eval="5"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">GROSS</field>
+            <field name="category_id" ref="hr_payroll.GROSS"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+date_to = payslip.date_to
+payslip_day = date_to.day
+weekly_mode = payslip.employee_id.deduction_calc_mode == 'period' and payslip.employee_id.deduction_calc_period == 'weekly'
+gross_reference_wage = payslip._l10n_do_get_effective_gross_reference_wage()
+
+if payslip.pay_vacation:
+    result = categories.get('VACA', 0.0)
+elif weekly_mode:
+    if payslip.pay_vacation and payslip.vacation_type in ['enjoyed', 'unpayed']:
+        result = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM'] + (VACA - gross_reference_wage)
+    elif payslip.pay_vacation and payslip.vacation_type in ['worked']:
+        result = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM'] + (VACA)
+    else:
+        result = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM']
+elif payslip_day &gt;= 25 and payslip_day &lt;= 31:
+
+    # get last payslip
+    last_vacation_amount = 0
+    last_INCENT = 0
+    last_GROSS = 0
+    slip_ids = employee.slip_ids.sorted('id')
+    list_ids = [line.id for line in slip_ids]
+    if len(list_ids) &gt; 1:
+        last_slip = employee.mapped('slip_ids').browse([list_ids[list_ids.index(payslip.id)-1]])
+        line_ids = last_slip.mapped('line_ids')
+        for line in line_ids:
+            if line.code == 'VACA':
+                last_vacation_amount = line.total
+            if line.code == 'GROSS':
+                last_GROSS = line.total
+            if line.code == 'INCENT':
+                last_INCENT = line.total
+
+        novan_pos = NOVAN if NOVAN &gt; 0 else 0.0
+        if last_slip.pay_vacation and last_slip.vacation_type in ['unpayed', 'worked']:
+
+            if last_slip._l10n_do_has_manual_partial_worked_days():
+                result = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM'] + (novan_pos - last_INCENT - HEPQ)
+            else:
+                result  = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM'] + (novan_pos - last_INCENT - HEPQ)
+        else:
+            if last_slip._l10n_do_has_manual_partial_worked_days():
+                result = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM'] + (novan_pos - HEPQ)
+            else:
+                result = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM'] + (novan_pos - HEPQ)
+    else:
+        novan_pos = NOVAN if NOVAN &gt; 0 else 0.0
+        if payslip._l10n_do_has_manual_partial_worked_days():
+            result = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM'] + (novan_pos - HEPQ)
+        else:
+            result = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM'] + (novan_pos - last_INCENT - HEPQ)
+else:
+    if payslip.pay_vacation and payslip.vacation_type in ['enjoyed', 'unpayed']:
+        result = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM'] + (VACA - gross_reference_wage)
+    elif payslip.pay_vacation and payslip.vacation_type in ['worked']:
+        result = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM'] + (VACA)
+    else:
+        result = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM']
+            </field>
+        </record>
+
+        <record id="l10n_do_payroll_hr_rule_net" model="hr.salary.rule">
+            <field name="name">Salario neto a pagar</field>
+            <field name="sequence" eval="200"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">NET</field>
+            <field name="category_id" ref="hr_payroll.NET"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+if payslip.pay_vacation and payslip.vacation_type == 'unpayed':
+    result = categories['BASIC'] + categories['ALW'] + categories['DED'] + categories['COM'] + categories['HE'] + categories['INCE'] + categories['ODED'] + categories['APORA'] + categories['SALID']
+else:
+    result = categories['BASIC'] + categories['ALW'] + categories['DED'] + categories['COM'] + categories['HE'] + categories['VACA'] + categories['INCE'] + categories['ODED'] + categories['APORA'] + categories['SALID']            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        <record id="exit_christmas_amount_rule" model="hr.salary.rule">
+            <field name="name">Salida (Navidad)</field>
+            <field name="sequence" eval="197"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">SALNAV</field>
+            <field name="category_id" ref="l10n_do_payroll.SALID"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('SALNAV'):
+    result = inputs['SALNAV'].amount != 0
+else:
+    result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = inputs.get('SALNAV').amount
+            </field>
+        </record>
+
+        <record id="exit_notice_amount_rule" model="hr.salary.rule">
+            <field name="name">Salida (Preaviso)</field>
+            <field name="sequence" eval="198"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">SALPRE</field>
+            <field name="category_id" ref="l10n_do_payroll.SALID"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('SALPRE'):
+    result = inputs['SALPRE'].amount != 0
+else:
+    result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = inputs.get('SALPRE').amount
+            </field>
+        </record>
+
+        <record id="exit_severance_amount_rule" model="hr.salary.rule">
+            <field name="name">Salida (Cesantía)</field>
+            <field name="sequence" eval="199"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">SALCES</field>
+            <field name="category_id" ref="l10n_do_payroll.SALID"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('SALCES'):
+    result = inputs['SALCES'].amount != 0
+else:
+    result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = inputs.get('SALCES').amount
+            </field>
+        </record>
+
+        <record id="ret_sfs" model="hr.salary.rule">
+            <field name="name">Retención ARS</field>
+            <field name="sequence" eval="5"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">SFST</field>
+            <field name="category_id" ref="hr_payroll.DED"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+date_to = payslip.date_to
+payslip_day = date_to.day
+weekly_mode = payslip.employee_id.deduction_calc_mode == 'period' and payslip.employee_id.deduction_calc_period == 'weekly'
+half_factor = 1.0 if weekly_mode else 0.5
+has_prior_same_month_payslip = payslip._l10n_do_has_previous_same_month_payslip()
+accumulated_period_base = payslip._l10n_do_get_accumulated_contribution_period_base()
+
+#sfs = 0.0304
+sfs = payslip._rule_parameter('l10n_do_sfs') / 100
+cap_base = payslip._l10n_do_get_salary_cap('ars')
+cap_amount = cap_base * sfs
+last_SFS = payslip._l10n_do_get_previous_same_month_line_total('SFST', absolute=True) if has_prior_same_month_payslip else 0.0
+
+if payslip._get_l10n_do_effective_schedule_pay() == 'hourly':
+    result = -(min(GROSS, cap_base) * sfs)
+else:
+    if payslip_day &gt;= 25 and payslip_day &lt;= 31 and not weekly_mode and has_prior_same_month_payslip:
+        closing_base = min(accumulated_period_base, cap_base)
+        # Tope ARS mensual
+        if accumulated_period_base &gt; cap_base:
+            result = -(cap_amount - last_SFS)
+        else:
+            result = -((closing_base * sfs) - last_SFS)
+    elif payslip.pay_vacation and payslip.vacation_type == 'enjoyed':
+        result = -(min(GROSS, cap_base) * sfs)
+    else:
+        # Primera quincena
+        if (GROSS) &gt; cap_base:
+            result = -(cap_amount * half_factor)
+        else:
+            if payslip._l10n_do_has_manual_partial_worked_days():
+                result = -(GROSS * sfs)
+            else:
+                result = -((GROSS * sfs) * half_factor)
+            </field>
+<!--            <field name="register_id" ref="l10n_do_payroll.contribution_register_tss"/>-->
+        </record>
+
+        <record id="additional_per_capita_payment" model="hr.salary.rule">
+            <field name="name">Pagos Per Cápita adicional</field>
+            <field name="sequence" eval="5"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">PERCAP</field>
+            <field name="category_id" ref="hr_payroll.DED"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+result = payslip._l10n_do_get_additional_per_capita_payment() &gt; 0.0
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = -(payslip._l10n_do_get_additional_per_capita_payment())
+            </field>
+        </record>
+
+        <record id="ret_afp" model="hr.salary.rule">
+            <field name="name">Retención AFP</field>
+            <field name="sequence" eval="5"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">SVDS</field>
+            <field name="category_id" ref="hr_payroll.DED"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+date_to = payslip.date_to
+payslip_day = date_to.day
+weekly_mode = payslip.employee_id.deduction_calc_mode == 'period' and payslip.employee_id.deduction_calc_period == 'weekly'
+half_factor = 1.0 if weekly_mode else 0.5
+has_prior_same_month_payslip = payslip._l10n_do_has_previous_same_month_payslip()
+accumulated_period_base = payslip._l10n_do_get_accumulated_contribution_period_base()
+#afp = 0.0287
+afp = payslip._rule_parameter('l10n_do_afp') / 100
+cap_base = payslip._l10n_do_get_salary_cap('afp')
+cap_amount = cap_base * afp
+
+last_AFP = payslip._l10n_do_get_previous_same_month_line_total('SVDS', absolute=True) if has_prior_same_month_payslip else 0.0
+if payslip._get_l10n_do_effective_schedule_pay() == 'hourly':
+    result = -(min(GROSS, cap_base) * afp)
+else:
+    if payslip_day &gt;= 25 and payslip_day &lt;= 31 and not weekly_mode and has_prior_same_month_payslip:
+        closing_base = min(accumulated_period_base, cap_base)
+        if accumulated_period_base &gt; cap_base:
+            result = -((cap_amount) - last_AFP)
+        else:
+            result = -((closing_base * afp) - last_AFP)
+    elif payslip.pay_vacation and payslip.vacation_type == 'enjoyed':
+        result = -(min(GROSS, cap_base) * afp)
+    else:
+        # Primera quincena
+        if (GROSS) &gt; cap_base:
+            result = -(cap_amount * half_factor)
+        else:
+            if payslip._l10n_do_has_manual_partial_worked_days():
+                result = -(GROSS * afp)
+            else:
+                result = -((GROSS * afp) * half_factor)
+            </field>
+<!--            <field name="register_id" ref="l10n_do_payroll.contribution_register_tss"/>-->
+        </record>
+
+        <record id="cont_sfs" model="hr.salary.rule">
+            <field name="name">Contribución del empleador SFS</field>
+            <field name="sequence" eval="6"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">SFS E</field>
+            <field name="category_id" ref="hr_payroll.COMP"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+date_to = payslip.date_to
+payslip_day = date_to.day
+weekly_mode = payslip.employee_id.deduction_calc_mode == 'period' and payslip.employee_id.deduction_calc_period == 'weekly'
+half_factor = 1.0 if weekly_mode else 0.5
+has_prior_same_month_payslip = payslip._l10n_do_has_previous_same_month_payslip()
+accumulated_period_base = payslip._l10n_do_get_accumulated_contribution_period_base()
+rate = 0.0709
+
+if payslip._get_l10n_do_effective_schedule_pay() == 'hourly':
+    result = GROSS * rate
+else:
+    if payslip_day &gt;= 25 and payslip_day &lt;= 31 and not weekly_mode and has_prior_same_month_payslip:
+        last_SFS_E = payslip._l10n_do_get_previous_same_month_line_total('SFS E')
+        result = (accumulated_period_base * rate) - last_SFS_E
+    else:
+        if payslip._l10n_do_has_manual_partial_worked_days():
+            result = GROSS * rate
+        else:
+            result = GROSS * rate * half_factor
+            </field>
+<!--            <field name="register_id" ref="l10n_do_payroll.contribution_register_tss"/>-->
+        </record>
+
+        <record id="cont_afp" model="hr.salary.rule">
+            <field name="name">Contribución del Empleador AFP</field>
+            <field name="sequence" eval="5"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">SVDS E</field>
+            <field name="category_id" ref="hr_payroll.COMP"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+date_to = payslip.date_to
+payslip_day = date_to.day
+weekly_mode = payslip.employee_id.deduction_calc_mode == 'period' and payslip.employee_id.deduction_calc_period == 'weekly'
+half_factor = 1.0 if weekly_mode else 0.5
+has_prior_same_month_payslip = payslip._l10n_do_has_previous_same_month_payslip()
+accumulated_period_base = payslip._l10n_do_get_accumulated_contribution_period_base()
+rate = 0.071
+
+if payslip._get_l10n_do_effective_schedule_pay() == 'hourly':
+    result = GROSS * rate
+else:
+    if payslip_day &gt;= 25 and payslip_day &lt;= 31 and not weekly_mode and has_prior_same_month_payslip:
+        last_SVDS_E = payslip._l10n_do_get_previous_same_month_line_total('SVDS E')
+        result = (accumulated_period_base * rate) - last_SVDS_E
+    else:
+        if payslip._l10n_do_has_manual_partial_worked_days():
+            result = GROSS * rate
+        else:
+            result = GROSS * rate * half_factor
+            </field>
+<!--            <field name="register_id" ref="l10n_do_payroll.contribution_register_tss"/>-->
+        </record>
+
+        <record id="cont_srl" model="hr.salary.rule">
+            <field name="name">Contribución Seguro de Riesgos Laborales (SRL)</field>
+            <field name="sequence" eval="5"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">SRL E</field>
+            <field name="category_id" ref="hr_payroll.COMP"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+date_to = payslip.date_to
+payslip_day = date_to.day
+weekly_mode = payslip.employee_id.deduction_calc_mode == 'period' and payslip.employee_id.deduction_calc_period == 'weekly'
+half_factor = 1.0 if weekly_mode else 0.5
+has_prior_same_month_payslip = payslip._l10n_do_has_previous_same_month_payslip()
+accumulated_period_base = payslip._l10n_do_get_accumulated_contribution_period_base()
+# Tasa SRL configurable por empresa o parámetro; por defecto 1.04%
+rate = None
+cap_base = payslip._l10n_do_get_salary_cap('srl')
+# Leer de la compañía (campo computado l10n_do_srl_rate)
+try:
+    comp = payslip.company_id
+    val = comp.l10n_do_srl_rate if comp else None
+    if val in (False, None, ''):
+        # Fallback: construir desde categoría y sus tasas
+        cat = comp.l10n_do_srl_category if comp else None
+        rate_map = {
+            '1': comp.l10n_do_srl_rate_cat1 if comp else None,
+            '2': comp.l10n_do_srl_rate_cat2 if comp else None,
+            '3': comp.l10n_do_srl_rate_cat3 if comp else None,
+            '4': comp.l10n_do_srl_rate_cat4 if comp else None,
+        }
+        val = rate_map.get(cat or '1')
+    rate = float(val) if val not in (False, None, '') else None
+except:
+    rate = None
+
+# Fallback: parámetro del sistema
+if rate is None:
+    try:
+        param = payslip.env['ir.config_parameter'].sudo().get_param('l10n_do_payroll.srl_rate')
+        rate = float(param) if param else None
+    except:
+        rate = None
+
+# Default si no hay configuración válida
+if not rate or rate &lt;= 0:
+    rate = 0.0104
+
+# Normalizar: si viene como porcentaje (ej. 1.10), convertir a tasa (0.0110)
+if rate &gt;= 1:
+    rate = rate / 100.0
+
+if payslip._get_l10n_do_effective_schedule_pay() == 'hourly':
+    result = min(GROSS, cap_base) * rate
+else:
+    if payslip_day &gt;= 25 and payslip_day &lt;= 31 and not weekly_mode and has_prior_same_month_payslip:
+        last_SRL_E = payslip._l10n_do_get_previous_same_month_line_total('SRL E')
+        result = (min(accumulated_period_base, cap_base) * rate) - last_SRL_E
+    else:
+        if payslip._l10n_do_has_manual_partial_worked_days():
+            result = min(GROSS, cap_base) * rate
+        else:
+            result = min(GROSS, cap_base) * rate * half_factor
+            </field>
+<!--            <field name="register_id" ref="l10n_do_payroll.contribution_register_tss"/>-->
+        </record>
+
+  <record id="ret_isr" model="hr.salary.rule">
+            <field name="name">Impuesto Sobre la Renta</field>
+            <field name="sequence" eval="6"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">ISR</field>
+            <field name="category_id" ref="hr_payroll.DED"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+current_scisr = payslip._l10n_do_get_current_scisr_base(
+    gross_base=categories.get('GROSS', 0.0),
+    extra_hours=categories.get('HE', 0.0),
+    incentives=categories.get('INCE', 0.0),
+    commissions=categories.get('COM', 0.0),
+)
+cotizable = payslip._l10n_do_get_isr_monthly_reference(current_scisr) * 12
+
+if cotizable &gt;= 416220.00:
+    result = True
+else:
+    result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# ISR mensual de referencia, prorrateado por el peso del recibo en el mes.
+date_to = payslip.date_to
+payslip_day = date_to.day
+weekly_mode = payslip.employee_id.deduction_calc_mode == 'period' and payslip.employee_id.deduction_calc_period == 'weekly'
+sfisr_input = inputs.get('SFISR')
+sfisr = sfisr_input.amount if sfisr_input else 0.0
+v = payslip.employee_id.version_id
+
+current_scisr = payslip._l10n_do_get_current_scisr_base(
+    gross_base=categories.get('GROSS', 0.0),
+    extra_hours=categories.get('HE', 0.0),
+    incentives=categories.get('INCE', 0.0),
+    commissions=categories.get('COM', 0.0),
+)
+monthly_scisr_ref = payslip._l10n_do_get_isr_monthly_reference(current_scisr)
+
+sueldoneto = monthly_scisr_ref * 12
+
+rangos = [[0, 416220.00, 0],
+          [416220.01, 624329.00, 0.15],
+          [624329.01, 867123.00, 0.20],
+          [867123.01, 0, 0.25]]
+
+tasa1 = (rangos[1][1] - rangos[0][1]) * rangos[1][2]
+tasa2 = (rangos[2][1] - rangos[1][1]) * rangos[2][2]
+tasatotal = tasa1 + tasa2
+
+if sueldoneto &lt;= rangos[0][1]:
+    isr_monthly = 0.0
+elif sueldoneto &gt;= rangos[1][0] and sueldoneto &lt;= rangos[1][1]:
+    isr_monthly = (((sueldoneto - rangos[1][0]) * rangos[1][2]) / 12)
+elif sueldoneto &gt;= rangos[2][0] and sueldoneto &lt;= rangos[2][1]:
+    isr_monthly = ((tasa1 + ((sueldoneto - rangos[2][0]) * rangos[2][2])) / 12)
+else:
+    isr_monthly = (((tasatotal) + ((sueldoneto - rangos[3][0]) * rangos[3][2])) / 12)
+
+current_share = payslip._l10n_do_get_isr_current_share(current_scisr=current_scisr, monthly_reference=monthly_scisr_ref)
+target_current = isr_monthly * current_share
+has_prior_same_month_payslip = payslip._l10n_do_has_previous_same_month_payslip()
+
+already_withheld = 0.0
+prev_slips = employee.slip_ids.filtered(
+    lambda s: s.id != payslip.id and s.id &lt; payslip.id and s.date_to and payslip.date_to
+    and s.date_to.month == payslip.date_to.month and s.date_to.year == payslip.date_to.year
+)
+for sp in prev_slips:
+    for line in sp.mapped('line_ids'):
+        if line.code == 'ISR':
+            already_withheld += (line.total * -1)
+
+is_closing = payslip_day &gt;= 25 and payslip_day &lt;= 31 and not weekly_mode and has_prior_same_month_payslip
+
+if v and v.deduction_plan and v.deduction_quarter == 'first':
+    if is_closing:
+        result = 0.0
+    else:
+        val = target_current - sfisr
+        result = -val if val &gt; 0.0 else 0.0
+elif v and v.deduction_plan and v.deduction_quarter == 'second':
+    if is_closing:
+        val = (isr_monthly - already_withheld) - sfisr
+        result = -val if val &gt; 0.0 else 0.0
+    else:
+        result = 0.0
+else:
+    if is_closing:
+        val = (isr_monthly - already_withheld) - sfisr
+        result = -val if val &gt; 0.0 else 0.0
+    else:
+        val = target_current - sfisr
+        result = -val if val &gt; 0.0 else 0.0
+            </field>
+<!--            <field name="register_id" ref="l10n_do_payroll.contribution_register_dgii"/>-->
+        </record>
+
+        <record id="cont_infotep" model="hr.salary.rule">
+            <field name="name">Contribución Infotep</field>
+            <field name="sequence" eval="5"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">CINF</field>
+            <field name="category_id" ref="hr_payroll.COMP"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+date_to = payslip.date_to
+payslip_day = date_to.day
+weekly_mode = payslip.employee_id.deduction_calc_mode == 'period' and payslip.employee_id.deduction_calc_period == 'weekly'
+half_factor = 1.0 if weekly_mode else 0.5
+has_prior_same_month_payslip = payslip._l10n_do_has_previous_same_month_payslip()
+accumulated_period_base = payslip._l10n_do_get_accumulated_contribution_period_base()
+rate = 0.01
+
+if payslip_day &gt;= 25 and payslip_day &lt;= 31 and not weekly_mode and has_prior_same_month_payslip:
+    last_CINF = payslip._l10n_do_get_previous_same_month_line_total('CINF')
+    result = (accumulated_period_base * rate) - last_CINF
+else:
+    if payslip._l10n_do_has_manual_partial_worked_days():
+        result = GROSS * rate
+    else:
+        result = GROSS * rate * half_factor
+            </field>
+<!--            <field name="register_id" ref="l10n_do_payroll.contribution_register_infotep"/>-->
+        </record>
+
+        <record id="comissions" model="hr.salary.rule">
+            <field name="name">Comisiones</field>
+            <field name="sequence" eval="3"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">COMM</field>
+            <field name="category_id" ref="l10n_do_payroll.COM"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('COMIVE'):
+    if inputs['COMIVE'].amount > 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = inputs.get('COMIVE').amount
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        <record id="quotable_isr_salary" model="hr.salary.rule">
+            <field name="name">Salario Cotizable ISR</field>
+            <field name="sequence" eval="5"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">SCISR</field>
+            <field name="category_id" ref="l10n_do_payroll.SALCOT"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+current_scisr = payslip._l10n_do_get_current_scisr_base(
+    gross_base=categories.get('GROSS', 0.0),
+    extra_hours=categories.get('HE', 0.0),
+    incentives=categories.get('INCE', 0.0),
+    commissions=categories.get('COM', 0.0),
+)
+cotizable = payslip._l10n_do_get_accumulated_scisr_base(current_scisr) * 12
+
+if cotizable &gt;= 416220.00:
+    result = True
+else:
+    result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = payslip._l10n_do_get_current_scisr_base(
+    gross_base=categories.get('GROSS', 0.0),
+    extra_hours=categories.get('HE', 0.0),
+    incentives=categories.get('INCE', 0.0),
+    commissions=categories.get('COM', 0.0),
+)
+            </field>
+        </record>
+
+        <record id="extra_hours" model="hr.salary.rule">
+            <field name="name">Horas No Regulares</field>
+            <field name="sequence" eval="3"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">HOREX</field>
+            <field name="category_id" ref="l10n_do_payroll.HE"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# inputs.HE15 inputs.HE35 inputs.HE50 inputs.HE100
+
+if (inputs.get('HE15')) or (inputs.get('HE35'))  or (inputs.get('HE50'))  or (inputs.get('HE100')):
+    result = True
+else:
+    result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.HE15 | inputs.HE35 | inputs.HE50 | inputs.HE100
+
+v = payslip.employee_id.version_id
+if payslip._get_l10n_do_effective_schedule_pay() == 'hourly':
+    quince = 0
+    treinta_y_cinco = ((v and v.wage_extra_hour) or 0.0) * inputs.get('HE35').amount
+    cincuenta = 0
+    cien = ((v and v.wage_holidays_hour) or 0.0) * inputs.get('HE100').amount
+else:
+    salario_mensual = (v and v.wage) or 0.0
+    if inputs.get('HE15'):
+        quince = (((salario_mensual / 23.83) / 8) * 1.15) * inputs['HE15'].amount
+    else:
+        quince = 10
+    if inputs.get('HE35'):
+        treinta_y_cinco = (((salario_mensual / 23.83) / 8) * 1.35) * inputs['HE35'].amount
+    else:
+        treinta_y_cinco = 0
+    if inputs.get('HE50'):
+        cincuenta = (((salario_mensual / 23.83) / 8) * 1.50) * inputs['HE50'].amount
+    else:
+        cincuenta = 0
+    if inputs.get('HE100'):
+        cien = (((salario_mensual / 23.83) / 8) * 2) * inputs['HE100'].amount
+    else:
+        cien = 0
+
+result = quince + treinta_y_cinco + cincuenta + cien
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        <record id="incentives" model="hr.salary.rule">
+            <field name="name">Incentivos</field>
+            <field name="sequence" eval="3"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">INCENT</field>
+            <field name="category_id" ref="l10n_do_payroll.INCE"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('INCEN'):
+    if inputs['INCEN'].amount > 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.INCEN
+
+result = inputs.get('INCEN').amount
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        <record id="vacations" model="hr.salary.rule">
+            <field name="name">Vacaciones</field>
+            <field name="sequence" eval="3"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">VACA</field>
+            <field name="category_id" ref="l10n_do_payroll.VACA"/>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# inputs.VACA
+
+if payslip.pay_vacation:
+    result = True
+else:
+    result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.VACA
+
+v_wage = (payslip.employee_id.version_id and payslip.employee_id.version_id.wage) or 0.0
+vac_days = 0.0
+if inputs.get('VACA'):
+    vac_days = inputs.get('VACA').amount
+elif payslip.vacation_leave_id:
+    leave = payslip.vacation_leave_id
+    vac_days = ((leave._fields.get('payroll_vacation_days') and leave.payroll_vacation_days) or 0.0)
+    if not vac_days:
+        vac_days = ((leave._fields.get('number_of_days_display') and leave.number_of_days_display) or 0.0) or (leave.number_of_days or 0.0)
+    if not vac_days and leave.date_from and leave.date_to:
+        vac_days = (leave.date_to.date() - leave.date_from.date()).days + 1
+    if not vac_days and leave.request_date_from and leave.request_date_to:
+        vac_days = (leave.request_date_to - leave.request_date_from).days + 1
+if not vac_days and payslip.pay_vacation and payslip.date_from and payslip.date_to:
+    vac_days = (payslip.date_to - payslip.date_from).days + 1
+vac_days = abs(vac_days)
+result = (v_wage / 23.83) * vac_days
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        <record id="cafeteria" model="hr.salary.rule">
+            <field name="name">Cafetería</field>
+            <field name="sequence" eval="148"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">CAFE</field>
+            <field name="category_id" ref="l10n_do_payroll.ODED"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('CAFE'):
+    if inputs['CAFE'].amount &gt; 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.CAFE
+result = -(inputs.get('CAFE').amount)
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        <record id="farmacia" model="hr.salary.rule">
+            <field name="name">Farmacia</field>
+            <field name="sequence" eval="148"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">FARMA</field>
+            <field name="category_id" ref="l10n_do_payroll.ODED"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('FARMA'):
+    if inputs['FARMA'].amount &gt; 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.FARMA
+
+result = -(inputs.FARMA.amount)
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        <record id="ahorro" model="hr.salary.rule">
+            <field name="name">Ahorro</field>
+            <field name="sequence" eval="148"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">AHORRO</field>
+            <field name="category_id" ref="l10n_do_payroll.ODED"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('AHORRO'):
+    if inputs['AHORRO'].amount &gt; 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+
+result = -(inputs.get('AHORRO').amount)
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        <record id="restaurant" model="hr.salary.rule">
+            <field name="name">Restaurante</field>
+            <field name="sequence" eval="149"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">REST</field>
+            <field name="category_id" ref="l10n_do_payroll.ODED"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('REST'):
+    if inputs['REST'].amount &gt; 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.REST
+
+result = -(inputs.get('REST').amount)
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        <record id="medical_assurance" model="hr.salary.rule">
+            <field name="name">Seguro complementario</field>
+            <field name="sequence" eval="150"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">SEGMED</field>
+            <field name="category_id" ref="l10n_do_payroll.ODED"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('SEGMED'):
+    if inputs['SEGMED'].amount &gt; 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.SEGMED
+
+result = -(inputs.get('SEGMED').amount)
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        <record id="salary_advance" model="hr.salary.rule">
+            <field name="name">Avances a sueldo</field>
+            <field name="sequence" eval="151"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">AVAN</field>
+            <field name="category_id" ref="l10n_do_payroll.ODED"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('AVAN'):
+    if inputs['AVAN'].amount &gt; 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.AVAN
+
+result = -(inputs.get('AVAN').amount)
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        <record id="financial" model="hr.salary.rule">
+            <field name="name">Financiera</field>
+            <field name="sequence" eval="152"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">FINAN</field>
+            <field name="category_id" ref="l10n_do_payroll.ODED"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('FINAN'):
+    if inputs['FINAN'].amount &gt; 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.FINAN
+
+result = -(inputs['FINAN'].amount)
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        
+
+        <!-- Desembolso de Préstamos: visible, no afecta NET (categoría DESEM) -->
+        <record id="loan_disbursement" model="hr.salary.rule">
+            <field name="name">Desembolso de Préstamos</field>
+            <field name="sequence" eval="153"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">DESPRE</field>
+            <field name="category_id" ref="l10n_do_payroll.category_loan_disbursement"/>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('DESPRE'):
+    if inputs['DESPRE'].amount &gt; 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.DESPRE (monto de desembolso informado por el compute_sheet)
+result = inputs.get('DESPRE').amount
+            </field>
+        </record>
+
+        <record id="other_deductions" model="hr.salary.rule">
+            <field name="name">Otros descuentos</field>
+            <field name="sequence" eval="156"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">OTDESC</field>
+            <field name="category_id" ref="l10n_do_payroll.ODED"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('OTDESC'):
+    if inputs['OTDESC'].amount &gt; 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.OTDESC
+
+result = -(inputs.get('OTDESC').amount)
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        <record id="additional_contribution_sfs" model="hr.salary.rule">
+            <field name="name">Aportes adicionales SFS</field>
+            <field name="sequence" eval="5"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">APORSFS</field>
+            <field name="category_id" ref="l10n_do_payroll.APORA"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+
+if inputs.get('APORSFS'):
+    if inputs['APORSFS'].amount &gt; 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.APORSFS
+
+result = -(inputs.get('APORSFS').amount)
+            </field>
+<!--            <field name="register_id" ref="contribution_register_tss"/>-->
+        </record>
+
+        <record id="additional_contribution_afp" model="hr.salary.rule">
+            <field name="name">Aportes adicionales AFP</field>
+            <field name="sequence" eval="5"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">APORAFP</field>
+            <field name="category_id" ref="l10n_do_payroll.APORA"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('APORAFP'):
+    if inputs['APORAFP'].amount &gt; 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.APORAFP
+
+result = -(inputs.get('APORAFP').amount)
+            </field>
+<!--            <field name="register_id" ref="contribution_register_tss"/>-->
+        </record>
+
+        <record id="isr_positive_balance" model="hr.salary.rule">
+            <field name="name">Saldo a favor ISR</field>
+            <field name="sequence" eval="5"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">SFISR</field>
+            <field name="category_id" ref="l10n_do_payroll.SFISR"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('SFISR'):
+    if inputs['SFISR'].amount &gt; 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.SFISR
+
+result = inputs.get('SFISR').amount
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        <record id="previous_news" model="hr.salary.rule">
+            <field name="name">Novedades Anteriores</field>
+            <field name="sequence" eval="4"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">NOVAN</field>
+            <field name="category_id" ref="l10n_do_payroll.NOAN"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+date_to = payslip.date_to
+payslip_day = date_to.day
+
+if payslip_day &gt;= 25 and payslip_day &lt;= 31:
+    result = True
+else:
+    result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# COMM, INCENT
+if payslip_day &gt;= 25 and payslip_day &lt;= 31:
+    slip_ids = employee.slip_ids.sorted('id')
+    list_ids = [line.id for line in slip_ids]
+
+    if len(list_ids) &gt; 1:
+        last_slip = employee.mapped('slip_ids').browse([list_ids[list_ids.index(payslip.id)-1]])
+        line_ids = last_slip.mapped('line_ids')
+
+        last_comission = 0
+        last_INCENT = 0
+        last_VACA = 0
+
+        for line in line_ids:
+            if line.code == 'COMM':
+                last_comission = line.total
+            if line.code == 'INCENT':
+                last_INCENT = line.total
+            if line.code == 'VACA':
+                last_VACA = line.total
+
+        novedades_anteriores = HEPQ + last_comission + last_INCENT - last_VACA
+
+        if novedades_anteriores:
+            result = novedades_anteriores
+        else:
+            result = 0
+    else:
+        result = 0
+else:
+    result = 0
+            </field>
+        </record>
+
+        <record id="previous_extra_hours" model="hr.salary.rule">
+            <field name="name">Horas extras primera quincena</field>
+            <field name="sequence" eval="3"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_permanent_employees"/>
+            <field name="code">HEPQ</field>
+            <field name="category_id" ref="l10n_do_payroll.NOAN"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+date_to = payslip.date_to
+payslip_day = date_to.day
+
+if payslip_day &gt;= 25 and payslip_day &lt;= 31:
+    result = True
+else:
+    result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+slip_ids = employee.slip_ids.sorted('id')
+list_ids = [line.id for line in slip_ids]
+if len(list_ids) &gt; 1:
+    last_slip = employee.mapped('slip_ids').browse([list_ids[list_ids.index(payslip.id)-1]])
+    line_ids = last_slip.mapped('line_ids')
+    last_HE = 0
+
+    for line in line_ids:
+        if line.code == 'HOREX':
+            last_HE = line.total
+
+    if last_HE &gt; 0:
+        result = last_HE
+    else:
+        result = 0
+else:
+    result = 0
+            </field>
+        </record>
+
+        <!--Estructura de doble sueldo / regalía -->
+        <record id="cumulative_salary_computation" model="hr.salary.rule">
+            <field name="name">Cómputo acumulativo de salarios</field>
+            <field name="sequence" eval="1"/>
+            <field name="struct_id" ref="l10n_do_payroll.christmas_salary_structure"/>
+            <field name="code">ACUSAL</field>
+            <field name="category_id" ref="hr_payroll.BASIC"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+actual_year = payslip.date_to.year
+date_start_str = '{}-01-01'.format(actual_year)
+date_start = employee.convert_to_date(date_start_str)
+date_end_str = '{}-12-31'.format(actual_year)
+date_end = employee.convert_to_date(date_end_str)
+payslips_lines = employee.slip_ids.filtered(lambda p: p.date_from &gt;= date_start and p.date_to &lt;= date_end and p.id != payslip.id).mapped('line_ids')
+lines = payslips_lines.filtered(lambda l: l.code == 'BASIC' or l.code == 'INCENT' or l.code == 'COMM')
+amount = sum(line.total for line in lines)
+result = amount
+            </field>
+        </record>
+
+        <record id="net_christmas_salary" model="hr.salary.rule">
+            <field name="name">Regalía / Doble sueldo</field>
+            <field name="sequence" eval="100"/>
+            <field name="struct_id" ref="l10n_do_payroll.christmas_salary_structure"/>
+            <field name="code">REG/DOB</field>
+            <field name="category_id" ref="hr_payroll.NET"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = categories['BASIC'] / 12
+            </field>
+        </record>
+
+        <!--Estructura de empleados extranjeros -->
+        <record id="hr_rule_basic_foreign_employees" model="hr.salary.rule">
+            <field name="name">Salario básico Empleados Extranjeros</field>
+            <field name="sequence" eval="1"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_foreign_employees"/>
+            <field name="code">BASIC</field>
+            <field name="category_id" ref="hr_payroll.BASIC"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+v_wage = (payslip.employee_id.version_id and payslip.employee_id.version_id.wage) or 0.0
+weekly_mode = payslip.employee_id.deduction_calc_mode == 'period' and payslip.employee_id.deduction_calc_period == 'weekly'
+overlap_days = 0.0
+if not payslip.pay_vacation and payslip.employee_id and payslip.date_from and payslip.date_to:
+    overlap_days = payslip._get_vacation_days_overlap()
+
+if payslip.pay_vacation:
+    result = 0.0
+elif overlap_days:
+    if weekly_mode:
+        period_days = 23.83 / 4.0
+    elif payslip._get_l10n_do_effective_schedule_pay() == 'bi-weekly':
+        period_days = 23.83 / 2.0
+    else:
+        period_days = 23.83
+    worked_days = period_days - overlap_days
+    if worked_days &lt; 0.0:
+        worked_days = 0.0
+    result = (v_wage / 23.83) * worked_days
+elif weekly_mode:
+    if payslip._l10n_do_has_manual_partial_worked_days():
+        result = v_wage
+    else:
+        result = v_wage / 4
+elif payslip._get_l10n_do_effective_schedule_pay() == 'bi-weekly':
+    if payslip._l10n_do_has_manual_partial_worked_days():
+        result = v_wage
+    else:
+        result = v_wage / 2
+else:
+    result = v_wage
+            </field>
+        </record>
+
+        <record id="l10n_do_payroll_hr_rule_taxable_foreign_employees" model="hr.salary.rule">
+            <field name="name">Salario Bruto - Salario Cotizable Empleados Extranjeros</field>
+            <field name="sequence" eval="4"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_foreign_employees"/>
+            <field name="code">GROSS</field>
+            <field name="category_id" ref="hr_payroll.GROSS"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+date_to = payslip.date_to
+payslip_day = date_to.day
+weekly_mode = payslip.employee_id.deduction_calc_mode == 'period' and payslip.employee_id.deduction_calc_period == 'weekly'
+v_wage = (payslip.employee_id.version_id and payslip.employee_id.version_id.wage) or 0.0
+period_wage = payslip._get_l10n_do_period_wage()
+gross_reference_wage = v_wage if payslip._get_l10n_do_effective_schedule_pay() == 'bi-weekly' else period_wage
+
+if payslip.pay_vacation:
+    result = categories.get('VACA', 0.0)
+elif weekly_mode:
+    if payslip.pay_vacation and payslip.vacation_type in ['enjoyed', 'unpayed']:
+        result = period_wage + categories['ALW'] + categories['INCE'] + categories['COM'] + (VACA - period_wage)
+    elif payslip.pay_vacation and payslip.vacation_type in ['worked']:
+        result = period_wage + categories['ALW'] + categories['INCE'] + categories['COM'] + (VACA)
+    else:
+        result = period_wage + categories['ALW'] + categories['INCE'] + categories['COM']
+elif payslip_day &gt;= 25 and payslip_day &lt;= 31:
+    # get last payslip
+    last_vacation_amount = 0
+    last_INCENT = 0
+    last_GROSS = 0
+    slip_ids = employee.slip_ids.sorted('id')
+    list_ids = [line.id for line in slip_ids]
+    if len(list_ids) &gt; 1:
+        last_slip = employee.mapped('slip_ids').browse([list_ids[list_ids.index(payslip.id)-1]])
+        line_ids = last_slip.mapped('line_ids')
+        for line in line_ids:
+            if line.code == 'VACA':
+                last_vacation_amount = line.total
+            if line.code == 'GROSS':
+                last_GROSS = line.total
+            if line.code == 'INCENT':
+                last_INCENT = line.total
+
+        novan_pos = NOVAN if NOVAN &gt; 0 else 0.0
+        if last_slip.pay_vacation and last_slip.vacation_type in ['unpayed', 'worked']:
+            if last_slip._l10n_do_has_manual_partial_worked_days():
+                result = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM'] + (novan_pos - last_INCENT - HEPQ) + last_GROSS
+            else:
+                result  = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM'] + (novan_pos - last_INCENT - HEPQ)
+        else:
+            if last_slip._l10n_do_has_manual_partial_worked_days():
+                result = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM'] + (novan_pos - last_INCENT - HEPQ) + last_GROSS
+            else:
+                result = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM'] + (novan_pos - HEPQ)
+    else:
+        novan_pos = NOVAN if NOVAN &gt; 0 else 0.0
+        if payslip._l10n_do_has_manual_partial_worked_days():
+            result = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM'] + (novan_pos - last_INCENT - HEPQ) + last_GROSS
+        else:
+            result = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM'] + (novan_pos - last_INCENT - HEPQ)
+else:
+    if payslip.pay_vacation and payslip.vacation_type in ['enjoyed', 'unpayed']:
+        result = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM'] + (VACA - gross_reference_wage)
+    elif payslip.pay_vacation and payslip.vacation_type in ['worked']:
+        result = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM'] + (VACA)
+    else:
+        result = gross_reference_wage + categories['ALW'] + categories['INCE'] + categories['COM']
+            </field>
+        </record>
+
+        <record id="hr_rule_net_foreign_employees" model="hr.salary.rule">
+            <field name="name">Salario neto a pagar Empleados Extranjeros</field>
+            <field name="sequence" eval="200"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_foreign_employees"/>
+            <field name="code">NET</field>
+            <field name="category_id" ref="hr_payroll.NET"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = categories['BASIC'] + categories['DED'] + categories['COM'] + categories['HE'] + categories['INCE'] + categories['ODED'] + categories['SALID']
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        <record id="exit_christmas_amount_rule_foreign_employees" model="hr.salary.rule">
+            <field name="name">Salida (Navidad) Empleados Extranjeros</field>
+            <field name="sequence" eval="197"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_foreign_employees"/>
+            <field name="code">SALNAV</field>
+            <field name="category_id" ref="l10n_do_payroll.SALID"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('SALNAV'):
+    result = inputs['SALNAV'].amount != 0
+else:
+    result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = inputs.get('SALNAV').amount
+            </field>
+        </record>
+
+        <record id="exit_notice_amount_rule_foreign_employees" model="hr.salary.rule">
+            <field name="name">Salida (Preaviso) Empleados Extranjeros</field>
+            <field name="sequence" eval="198"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_foreign_employees"/>
+            <field name="code">SALPRE</field>
+            <field name="category_id" ref="l10n_do_payroll.SALID"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('SALPRE'):
+    result = inputs['SALPRE'].amount != 0
+else:
+    result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = inputs.get('SALPRE').amount
+            </field>
+        </record>
+
+        <record id="exit_severance_amount_rule_foreign_employees" model="hr.salary.rule">
+            <field name="name">Salida (Cesantía) Empleados Extranjeros</field>
+            <field name="sequence" eval="199"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_foreign_employees"/>
+            <field name="code">SALCES</field>
+            <field name="category_id" ref="l10n_do_payroll.SALID"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('SALCES'):
+    result = inputs['SALCES'].amount != 0
+else:
+    result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = inputs.get('SALCES').amount
+            </field>
+        </record>
+
+        <record id="comissions_foreign_employees" model="hr.salary.rule">
+            <field name="name">Comisiones Empleados Extranjeros</field>
+            <field name="sequence" eval="3"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_foreign_employees"/>
+            <field name="code">COMM</field>
+            <field name="category_id" ref="l10n_do_payroll.COM"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('COMIVE'):
+    if inputs['COMIVE'].amount > 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = inputs.get('COMIVE').amount
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        <record id="incentives_foreign_employees" model="hr.salary.rule">
+            <field name="name">Incentivos Empleados Extranjeros</field>
+            <field name="sequence" eval="3"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_foreign_employees"/>
+            <field name="code">INCENT</field>
+            <field name="category_id" ref="l10n_do_payroll.INCE"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('INCEN'):
+    if inputs['INCEN'].amount > 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.INCEN
+
+result = inputs.get('INCEN').amount
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+
+    </record>
+
+
+        <record id="extra_hours_foreign_employees" model="hr.salary.rule">
+            <field name="name">Horas No Regulares Empleados Extranjeros</field>
+            <field name="sequence" eval="3"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_foreign_employees"/>
+            <field name="code">HOREX</field>
+            <field name="category_id" ref="l10n_do_payroll.HE"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# inputs.HE15 inputs.HE35 inputs.HE50 inputs.HE100
+
+if (inputs.get('HE15')) or (inputs.get('HE35'))  or (inputs.get('HE50'))  or (inputs.get(''HE100')):
+    result = True
+else:
+    result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.HE15 | inputs.HE35 | inputs.HE50 | inputs.HE100
+
+if payslip._get_l10n_do_effective_schedule_pay() == 'hourly':
+    # TODO quince = wage * 0.15 * inputs.get('HE15').amount (El salario está abultado)
+    quince = 0
+    treinta_y_cinco = ((payslip.employee_id.version_id and payslip.employee_id.version_id.wage_extra_hour) or 0.0) * inputs.get('HE35').amount
+    # TODO cincuenta = wage * 1.50 * inputs.get('HE50').amount (El salario está abultado)
+    cincuenta = 0
+    cien = ((payslip.employee_id.version_id and payslip.employee_id.version_id.wage_holidays_hour) or 0.0) * inputs.get('HE100').amount
+else:
+    salario_mensual = ((payslip.employee_id.version_id and payslip.employee_id.version_id.wage) or 0.0)
+    if inputs.get('HE15'):
+        quince = (((salario_mensual / 23.83) / 8) * 1.15) * inputs['HE15'].amount
+    else:
+        quince = 10
+    if inputs.get('HE35'):
+        treinta_y_cinco = (((salario_mensual / 23.83) / 8) * 1.35) * inputs['HE35'].amount
+    else:
+        treinta_y_cinco = 0
+	if inputs.get('HE50'):
+		cincuenta = (((salario_mensual / 23.83) / 8) * 1.50) * inputs['HE50'].amount
+    else:
+		cincuenta = 0
+	if inputs.get('HE100'):
+		cien = (((salario_mensual / 23.83) / 8) * 2) * inputs['HE100'].amount
+	else:
+		cien = 0
+
+result = quince + treinta_y_cinco + cincuenta + cien
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        <record id="previous_extra_hours_foreign_employees" model="hr.salary.rule">
+            <field name="name">Horas extras primera quincena</field>
+            <field name="sequence" eval="3"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_foreign_employees"/>
+            <field name="code">HEPQ</field>
+            <field name="category_id" ref="l10n_do_payroll.NOAN"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+date_to = payslip.date_to
+payslip_day = date_to.day
+
+if payslip_day &gt;= 25 and payslip_day &lt;= 31:
+    result = True
+else:
+    result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+slip_ids = employee.slip_ids.sorted('id')
+list_ids = [line.id for line in slip_ids]
+if len(list_ids) &gt; 1:
+    last_slip = employee.mapped('slip_ids').browse([list_ids[list_ids.index(payslip.id)-1]])
+    line_ids = last_slip.mapped('line_ids')
+    last_HE = 0
+
+    for line in line_ids:
+        if line.code == 'HOREX':
+            last_HE = line.total
+
+    if last_HE &gt; 0:
+        result = last_HE
+    else:
+        result = 0
+else:
+    result = 0
+            </field>
+        </record>
+
+        <record id="financial_foreign_employees" model="hr.salary.rule">
+            <field name="name">Financiera Empleados Extranjeros</field>
+            <field name="sequence" eval="152"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_foreign_employees"/>
+            <field name="code">FINAN</field>
+            <field name="category_id" ref="l10n_do_payroll.ODED"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('FINAN'):
+    if inputs['FINAN'].amount &gt; 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.FINAN
+
+result = -(inputs.get('FINAN').amount)
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        <record id="farmacia_foreign_employees" model="hr.salary.rule">
+            <field name="name">Farmacia Empleados Extranjeros</field>
+            <field name="sequence" eval="148"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_foreign_employees"/>
+            <field name="code">FARMA</field>
+            <field name="category_id" ref="l10n_do_payroll.ODED"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('FARMA'):
+    if inputs['FARMA'].amount &gt; 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.FARMA
+
+result = -(inputs.get('FARMA').amount)
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        <record id="ahorro_foreign_employees" model="hr.salary.rule">
+            <field name="name">Ahorro Empleados Extranjeros</field>
+            <field name="sequence" eval="148"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_foreign_employees"/>
+            <field name="code">AHORRO</field>
+            <field name="category_id" ref="l10n_do_payroll.ODED"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+
+if inputs.get('AHORRO'):
+    if inputs['AHORRO'].amount &gt; 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.AHORRO
+
+result = -(inputs.get('AHORRO').amount)
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        <record id="restaurant_foreign_employees" model="hr.salary.rule">
+            <field name="name">Restaurante Empleados Extranjeros</field>
+            <field name="sequence" eval="149"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_foreign_employees"/>
+            <field name="code">REST</field>
+            <field name="category_id" ref="l10n_do_payroll.ODED"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('REST'):
+    if inputs['REST'].amount &gt; 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.REST
+
+result = -(inputs.get('REST').amount)
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+
+        <record id="other_deductions_foreign_employees" model="hr.salary.rule">
+            <field name="name">Otros descuentos Empleados Extranjeros</field>
+            <field name="sequence" eval="155"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_foreign_employees"/>
+            <field name="code">OTDESC</field>
+            <field name="category_id" ref="l10n_do_payroll.ODED"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+if inputs.get('OTDESC'):
+    if inputs['OTDESC'].amount &gt; 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.OTDESC
+
+result = -(inputs.get('OTDESC').amount)
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+        <record id="ret_isr_foreign_employees" model="hr.salary.rule">
+            <field name="name">Impuesto Sobre la Renta Empleados Extranjeros</field>
+            <field name="sequence" eval="6"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_foreign_employees"/>
+            <field name="code">ISR</field>
+            <field name="category_id" ref="hr_payroll.DED"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+additional_per_capita = payslip._l10n_do_get_additional_per_capita_monthly_reference()
+cotizable = ((GROSS + categories['HE']) - additional_per_capita) * 12
+if cotizable &lt; 0.0:
+    cotizable = 0.0
+
+if cotizable &gt;= 416220.00:
+    result = True
+else:
+    result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# afp = 0.0287
+# sfs = 0.0304
+
+# Get payslip date to compute second quarter ISR
+date_to = payslip.date_to
+payslip_day = date_to.day
+v = payslip.employee_id.version_id
+# ----------------------------------------------
+sfisr = 0
+if inputs.get('code') == 'SFISR' and inputs.get('amount') > 0:
+    sfisr = inputs['SFISR'].amount
+last_ISR = 0
+# Get ISR
+if payslip_day &gt;= 25 and payslip_day &lt;= 31:
+    slip_ids = employee.slip_ids.sorted('id')
+    list_ids = [line.id for line in slip_ids]
+
+    if len(list_ids) &gt; 1:
+        last_slip = employee.mapped('slip_ids').browse([list_ids[list_ids.index(payslip.id)-1]])
+        line_ids = last_slip.mapped('line_ids')
+
+        last_ISR = 0
+
+        for line in line_ids:
+            if line.code == 'ISR':
+                last_ISR = line.total * -1  # multiply by -1 to make the amount positive
+
+# Compute ISR
+sueldoneto = SCISR * 12
+
+# desde          hasta       tasa
+rangos = [[0, 416220.00, 0],
+          [416220.01, 624329.00, 0.15],
+          [624329.01, 867123.00, 0.20],
+          [867123.01, 0, 0.25]]
+
+tasa1 = (rangos[1][1] - rangos[0][1]) * rangos[1][2]
+tasa2 = (rangos[2][1] - rangos[1][1]) * rangos[2][2]
+tasatotal = tasa1 + tasa2
+if sueldoneto &lt;= rangos[0][1]:
+    result = 0
+# rango 1
+elif sueldoneto &gt;= rangos[1][0] and sueldoneto &lt;= rangos[1][1]:
+    if payslip_day &gt;= 25 and payslip_day &lt;= 31:
+        if v and v.deduction_plan and v.deduction_quarter == 'first':
+            result = 0
+        elif v and v.deduction_plan and v.deduction_quarter == 'second':
+            result = -((((sueldoneto - rangos[1][0]) * rangos[1][2]) / 12)-sfisr)
+        else:
+            result = -(((((sueldoneto - rangos[1][0]) * rangos[1][2]) / 12) - last_ISR)-sfisr)
+
+    elif payslip.pay_vacation and payslip.vacation_type == 'enjoyed':
+        result = -((((sueldoneto - rangos[1][0]) * rangos[1][2]) / 12)-sfisr)
+    else:
+        if v and v.deduction_plan and v.deduction_quarter == 'first':
+            result = -((((sueldoneto - rangos[1][0]) * rangos[1][2]) / 12)-sfisr)
+        elif v and v.deduction_plan and v.deduction_quarter == 'second':
+            result = 0
+        else:
+            result = -(((((sueldoneto - rangos[1][0]) * rangos[1][2]) / 12) * 0.5)-sfisr)
+
+# rango 2
+elif sueldoneto &gt;= rangos[2][0] and sueldoneto &lt;= rangos[2][1]:
+    if payslip_day &gt;= 25 and payslip_day &lt;= 31:
+        if v and v.deduction_plan and v.deduction_quarter == 'first':
+            result = 0
+        elif v and v.deduction_plan and v.deduction_quarter == 'second':
+            result = -(((tasa1 + ((sueldoneto - rangos[2][0]) * rangos[2][2])) / 12)-sfisr)
+        else:
+            result = -((((tasa1 + ((sueldoneto - rangos[2][0]) * rangos[2][2])) / 12) - last_ISR)-sfisr)
+    elif payslip.pay_vacation and payslip.vacation_type == 'enjoyed':
+        result = -(((tasa1 + ((sueldoneto - rangos[2][0]) * rangos[2][2])) / 12)-sfisr)
+    else:
+        if v and v.deduction_plan and v.deduction_quarter == 'first':
+            result = -(((tasa1 + ((sueldoneto - rangos[2][0]) * rangos[2][2])) / 12)-sfisr)
+        elif v and v.deduction_plan and v.deduction_quarter == 'second':
+            result = 0
+        else:
+            result = -((((tasa1 + ((sueldoneto - rangos[2][0]) * rangos[2][2])) / 12) * 0.5)-sfisr)
+
+# rango 3
+else:
+    if payslip_day &gt;= 25 and payslip_day &lt;= 31:
+        if v and v.deduction_plan and v.deduction_quarter == 'first':
+            result = 0
+        elif v and v.deduction_plan and v.deduction_quarter == 'second':
+            result = -((((tasatotal) + ((sueldoneto - rangos[3][0]) * rangos[3][2])) / 12)-sfisr)
+        else:
+            result = -(((((tasatotal) + ((sueldoneto - rangos[3][0]) * rangos[3][2])) / 12) - last_ISR)-sfisr)
+    elif payslip.pay_vacation and payslip.vacation_type == 'enjoyed':
+        result = -((((tasatotal) + ((sueldoneto - rangos[3][0]) * rangos[3][2])) / 12)-sfisr)
+    else:
+        if v and v.deduction_plan and v.deduction_quarter == 'first':
+            result =  -((((tasatotal) + ((sueldoneto - rangos[3][0]) * rangos[3][2])) / 12)-sfisr)
+        elif v and v.deduction_plan and v.deduction_quarter == 'second':
+            result = 0
+        else:
+            result = -(((((tasatotal) + ((sueldoneto - rangos[3][0]) * rangos[3][2])) / 12) * 0.5)-sfisr)
+            </field>
+<!--            <field name="register_id" ref="l10n_do_payroll.contribution_register_dgii"/>-->
+        </record>
+
+        <record id="isr_positive_balance_foreign_employees" model="hr.salary.rule">
+            <field name="name">Saldo a favor ISR Empleados Extranjeros</field>
+            <field name="sequence" eval="5"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_foreign_employees"/>
+            <field name="code">SFISR</field>
+            <field name="category_id" ref="l10n_do_payroll.SFISR"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+
+if inputs.get('SFISR'):
+    if inputs['SFISR'].amount &gt; 0:
+        result = True
+    else:
+        result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# inputs.SFISR
+
+result = inputs.get('SFISR').amount
+            </field>
+<!--            <field name="register_id" ref="hr_payroll.contrib_register_employees"/>-->
+        </record>
+        <record id="quotable_isr_salary_foreign_employees" model="hr.salary.rule">
+            <field name="name">Salario Cotizable ISR Empleados Extranjeros</field>
+            <field name="sequence" eval="5"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_foreign_employees"/>
+            <field name="code">SCISR</field>
+            <field name="category_id" ref="l10n_do_payroll.SALCOT"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+additional_per_capita = payslip._l10n_do_get_additional_per_capita_monthly_reference()
+cotizable = ((GROSS + categories['HE'] + categories['INCE']) - additional_per_capita) * 12
+if cotizable &lt; 0.0:
+    cotizable = 0.0
+
+if cotizable &gt;= 416220.00:
+    result = True
+else:
+    result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# COMM, VACA, INCENT
+
+date_to = payslip.date_to
+payslip_day = date_to.day
+additional_per_capita = payslip._l10n_do_get_additional_per_capita_monthly_reference()
+
+last_GROSS = 0
+
+if payslip_day &gt;= 25 and payslip_day &lt;= 31:
+
+    slip_ids = employee.slip_ids.sorted('id')
+    list_ids = [line.id for line in slip_ids]
+    v_wage = (payslip.employee_id.version_id and payslip.employee_id.version_id.wage) or 0.0
+    salariocotizable = v_wage + categories['COM'] + categories['HE'] + categories['VACA'] + categories['INCE'] + NOVAN - additional_per_capita
+    if salariocotizable &lt; 0.0:
+        salariocotizable = 0.0
+    if len(list_ids) &gt; 1:
+        last_slip = employee.mapped('slip_ids').browse([list_ids[list_ids.index(payslip.id)-1]])
+        line_ids = last_slip.mapped('line_ids')
+
+        for line in line_ids:
+            if line.code == 'GROSS':
+                last_GROSS = line.total
+
+    v = payslip.employee_id.version_id
+    if v and v.deduction_plan and v.deduction_quarter == 'first':
+        result = salariocotizable
+    elif v and v.deduction_plan and v.deduction_quarter == 'second':
+        result = salariocotizable
+    else:
+        if payslip._l10n_do_has_manual_partial_worked_days():
+            result = salariocotizable / 2 + last_GROSS
+        else:
+            result = salariocotizable
+else:
+    if payslip.pay_vacation and payslip.vacation_type == 'enjoyed':
+        salariocotizable = (v_wage / 2) +  categories['COM']  + categories['HE'] + categories['VACA'] + categories['INCE'] - additional_per_capita
+        if salariocotizable &lt; 0.0:
+            salariocotizable = 0.0
+        result = salariocotizable
+    elif payslip.pay_vacation and payslip.vacation_type == 'unpayed':
+        salariocotizable = v_wage + categories['COM']  + categories['HE'] + (VACA - (v_wage/2)) + categories['INCE'] - additional_per_capita
+        if salariocotizable &lt; 0.0:
+            salariocotizable = 0.0
+        if v and v.deduction_plan and v.deduction_quarter == 'first':
+            result = salariocotizable
+        elif v and v.deduction_plan and v.deduction_quarter == 'second':
+            result = salariocotizable
+        else:
+            if payslip._l10n_do_has_manual_partial_worked_days():
+                result = salariocotizable / 2 + last_GROSS
+            else:
+                result = salariocotizable
+
+    else:
+        salariocotizable = v_wage + categories['COM']  + categories['HE'] + categories['VACA'] + categories['INCE'] - additional_per_capita
+        if salariocotizable &lt; 0.0:
+            salariocotizable = 0.0
+        if v and v.deduction_plan and v.deduction_quarter == 'first':
+            result = salariocotizable
+
+        elif v and v.deduction_plan and v.deduction_quarter == 'second':
+            result = salariocotizable
+        else:
+            if payslip._l10n_do_has_manual_partial_worked_days():
+                result = salariocotizable / 2 + last_GROSS
+            else:
+                result = salariocotizable
+            </field>
+        </record>
+
+        <record id="previous_news_foreign_employees" model="hr.salary.rule">
+            <field name="name">Novedades Anteriores Empleados Extranjeros</field>
+            <field name="sequence" eval="4"/>
+            <field name="struct_id" ref="l10n_do_payroll.structure_foreign_employees"/>
+            <field name="code">NOVAN</field>
+            <field name="category_id" ref="l10n_do_payroll.NOAN"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+date_to = payslip.date_to
+payslip_day = date_to.day
+
+if payslip_day &gt;= 25 and payslip_day &lt;= 31:
+    result = True
+else:
+    result = False
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# COMM, INCENT
+if payslip_day &gt;= 25 and payslip_day &lt;= 31:
+    slip_ids = employee.slip_ids.sorted('id')
+    list_ids = [line.id for line in slip_ids]
+
+    if len(list_ids) &gt; 1:
+        last_slip = employee.mapped('slip_ids').browse([list_ids[list_ids.index(payslip.id)-1]])
+        line_ids = last_slip.mapped('line_ids')
+
+        last_comission = 0
+        last_INCENT = 0
+        last_VACA = 0
+
+        for line in line_ids:
+            if line.code == 'COMM':
+                last_comission = line.total
+            if line.code == 'INCENT':
+                last_INCENT = line.total
+            if line.code == 'VACA':
+                last_VACA = line.total
+
+        novedades_anteriores = HEPQ + last_comission + last_INCENT - last_VACA
+
+        if novedades_anteriores:
+            result = novedades_anteriores
+        else:
+            result = 0
+    else:
+        result = 0
+else:
+    result = 0
+            </field>
+        </record>
+
+    </data>
+</odoo>

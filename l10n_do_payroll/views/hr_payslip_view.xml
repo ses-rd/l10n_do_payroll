@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Inherit Form View to Modify it -->
+    <record id="view_hr_payslip_form_inherited" model="ir.ui.view">
+        <field name="name">view.hr.payslip.form.inherited</field>
+        <field name="model">hr.payslip</field>
+        <field name="inherit_id" ref="hr_payroll.view_hr_payslip_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header" position="inside">
+                <button name="action_mail_send" type="object" class="oe_highlight" string="Enviar Recibo"/>
+            </xpath>
+
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_open_vacation_generated_payslips"
+                        type="object"
+                        class="oe_stat_button"
+                        icon="fa-suitcase"
+                        invisible="pay_vacation or vacation_generated_payslip_count == 0">
+                    <field name="vacation_generated_payslip_count" string="Nominas vacaciones" widget="statinfo"/>
+                </button>
+            </xpath>
+            
+            <xpath expr="//sheet//field[@name='struct_id']" position="after">
+                <field name="last_payslip_vacation" invisible="1"/>
+                <field name="pay_vacation" invisible="1"/>
+                <field name="vacation_type" invisible="1"/>
+                <field name="partial_worked_days"/>
+            </xpath>
+
+            <xpath expr="//page[@name='worked_days']//field[@name='worked_days_line_ids']/list/field[@name='number_of_days']" position="attributes">
+                <attribute name="readonly">0</attribute>
+            </xpath>
+
+            <xpath expr="//page[@name='worked_days']//field[@name='worked_days_line_ids']/list/field[@name='number_of_hours']" position="attributes">
+                <attribute name="readonly">0</attribute>
+            </xpath>
+
+        </field>
+    </record>
+    <record id="hr_payslip_tree_inherit" model="ir.ui.view">
+        <field name="name">hr.payslip.tree.inherit</field>
+        <field name="model">hr.payslip</field>
+        <field name="inherit_id" ref="hr_payroll.view_hr_payslip_tree"/>
+        <field name="arch" type="xml">
+
+            <xpath expr="//list//field[@name='date_from']" position="before">
+                <field name="real_worked_hours" string="Horas trabajadas"/>
+                <field name="total_to_pay" string="Total a Pagar"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>
+

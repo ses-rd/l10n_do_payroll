@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_company_form_l10n_do_payroll_nomina" model="ir.ui.view">
+        <field name="name">res.company.form.l10n_do_payroll.nomina</field>
+        <field name="model">res.company</field>
+        <field name="inherit_id" ref="base.view_company_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet/notebook" position="inside">
+                <page string="Nómina">
+                    <group>
+                        <field name="l10n_do_srl_category"/>
+                        <field name="l10n_do_srl_rate" readonly="1"/>
+                    </group>
+                    <group string="Topes salariales">
+                        <field name="l10n_do_ars_salary_cap"/>
+                        <field name="l10n_do_afp_salary_cap"/>
+                        <field name="l10n_do_srl_salary_cap"/>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

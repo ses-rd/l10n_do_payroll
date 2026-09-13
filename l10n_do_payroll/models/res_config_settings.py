@@ -1,0 +1,10 @@
+# -*- coding: utf-8 -*-
+
+from odoo import fields, models
+
+
+class ResConfigSettings(models.TransientModel):
+    _inherit = 'res.config.settings'
+
+    min_salary = fields.Char(string='Salario mínimo', config_parameter='l10n_do_payroll.default_min_salary',
+                             default=2100, required=False)

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_partner_bank_form_payroll_txt" model="ir.ui.view">
+        <field name="name">res.partner.bank.form.payroll.txt</field>
+        <field name="model">res.partner.bank</field>
+        <field name="inherit_id" ref="base.view_partner_bank_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Pago destino nomina" name="payroll_txt">
+                    <group>
+                        <group string="Cuenta destino del empleado">
+                            <field name="account_type"/>
+                        </group>
+                        <group string="Datos ACH calculados automaticamente">
+                            <field name="electronic_payroll_destination_bank_code" readonly="1"/>
+                            <field name="electronic_payroll_destination_bank_digit" readonly="1"/>
+                        </group>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

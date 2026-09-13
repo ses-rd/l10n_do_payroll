@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<odoo>
+    <data>
+        <record id="l10n_do_rule_parameter_sfs" model="hr.rule.parameter">
+            <field name="name">SFS Value (%)</field>
+            <field name="code">l10n_do_sfs</field>
+            <field name="country_id" ref="base.do"/>
+        </record>
+        <record id="l10n_do_rule_parameter_sfs_value_2026" model="hr.rule.parameter.value">
+            <field name="parameter_value">3.04</field>
+            <field name="rule_parameter_id" ref="l10n_do_rule_parameter_sfs"/>
+            <field name="date_from" eval="datetime(2017, 1, 1).date()"/>
+        </record>
+        <record id="l10n_do_rule_parameter_afp" model="hr.rule.parameter">
+            <field name="name">AFP Value (%)</field>
+            <field name="code">l10n_do_afp</field>
+            <field name="country_id" ref="base.do"/>
+        </record>
+        <record id="l10n_do_rule_parameter_afp_value_2026" model="hr.rule.parameter.value">
+            <field name="parameter_value">2.87</field>
+            <field name="rule_parameter_id" ref="l10n_do_rule_parameter_afp"/>
+            <field name="date_from" eval="datetime(2017, 1, 1).date()"/>
+        </record>
+    </data>
+</odoo>
+
